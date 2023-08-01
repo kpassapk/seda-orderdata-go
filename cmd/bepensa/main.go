@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"tmp/seda-orderdata-go/internal/client"
 
 	"cloud.google.com/go/storage"
 	"google.golang.org/api/iterator"
@@ -32,6 +33,40 @@ const (
 	StorefrontName = "bepensa-mx-b2b"
 	KeyExpression  = "Record.get('id')"
 )
+
+/*
+Bepensa order integration script
+-------------------------------
+
+This program looks for CSV files in a customer-supplied GCS bucket which match today's date. Matching files are split
+into smaller parts, filtering out rows which should not be in the final data set. (See "filtering" below.) The parts
+are then uploaded to the internal Yalo bucket, and an integration is created.
+
+Example data files for Bepsensa:
+
+gs://bucket_rmscm02056_yalo/mx_sellout/20230801-cubo-ventas-40d-001.csv
+gs://bucket_rmscm02056_yalo/mx_sellout/20230801-cubo-ventas-40d-002.csv
+gs://bucket_rmscm02056_yalo/mx_sellout/20230801-cubo-ventas-40d-003.csv
+gs://bucket_rmscm02056_yalo/mx_sellout/20230801-cubo-ventas-40d-004.csv
+
+This script is intended to be run as a Cloud Function.
+
+Usage
+
+1. Set these two environment variables
+- EXECUTIONS_TOKEN
+- TEMPLATES_TOKEN
+
+2. Make sure you have a file called "bepensa.json" with the credentials to the Bepensa bucket. This file should
+Storage.Objects.Read and Storage.Objects.List permissions.
+
+3. Run the program
+
+go run cmd/bepensa/main.go
+
+The output of the program will be the execution IDs for each part that matches today's date.
+
+*/
 
 type Config struct {
 	ApiUrl          string `split_words:"true" default:"https://api-ww-us-001.yalochat.com/commerce"`
@@ -156,6 +191,7 @@ func splitFile(
 			bytesWritten = 0
 		}
 
+		// For Bepensa, row 5 is the quantity.
 		row5, err := strconv.ParseFloat(record[5], 64)
 		if err != nil {
 			return files, errors.Wrap(err, "could not convert row 5 to float")
@@ -182,8 +218,8 @@ func splitFile(
 
 func ingestFile(
 	ctx context.Context,
-	tmplClient *TemplatesClient,
-	execClient *ExecutionsClient,
+	tmplClient *client.TemplatesClient,
+	execClient *client.ExecutionsClient,
 	file File,
 ) (string, error) {
 	args := map[string]string{
@@ -226,15 +262,15 @@ func main() {
 	}
 
 	httpClient := http.DefaultClient
-	tmplClient, err := NewTemplatesClient(
+	tmplClient, err := client.NewTemplatesClient(
 		httpClient,
-		WithTemplatesEndpoint(templatesUrl(cfg)),
-		WithTemplatesToken(cfg.TemplatesToken))
+		client.WithTemplatesEndpoint(templatesUrl(cfg)),
+		client.WithTemplatesToken(cfg.TemplatesToken))
 
-	execClient, err := NewExecutionsClient(
+	execClient, err := client.NewExecutionsClient(
 		httpClient,
-		WithExecutionsEndpoint(executionsUrl(cfg)),
-		WithExecutionsToken(cfg.ExecutionsToken))
+		client.WithExecutionsEndpoint(executionsUrl(cfg)),
+		client.WithExecutionsToken(cfg.ExecutionsToken))
 
 	if err != nil {
 		panic(err)

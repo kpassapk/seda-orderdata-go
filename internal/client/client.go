@@ -1,4 +1,4 @@
-package main
+package client
 
 import (
 	"bytes"
@@ -166,9 +166,8 @@ func NewTemplatesClient(h *http.Client, opts ...TemplatesClientOption) (*Templat
 
 func (c *TemplatesClient) RenderTemplate(_ context.Context, name string, args map[string]string) ([]byte, error) {
 	path := "templates/%s/render"
-	tmpl := "gcscsv-order"
 
-	endpoint, err := url.JoinPath(c.endpoint, fmt.Sprintf(path, tmpl))
+	endpoint, err := url.JoinPath(c.endpoint, fmt.Sprintf(path, name))
 
 	b, _ := json.Marshal(args)
 	// We should e able to marshal every map[string]string
